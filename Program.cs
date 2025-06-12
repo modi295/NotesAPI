@@ -148,7 +148,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGroup("/api").WithTags("Lookup").WithOpenApi().MapLookupApi();
+app.MapGroup("/api").MapLookupApi();
 
 // 6. Map controllers (endpoints)
 app.MapControllers();
