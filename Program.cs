@@ -1,4 +1,4 @@
-using System.Text; 
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -15,6 +15,7 @@ using FluentValidation.AspNetCore;
 using NotesAPI.Validator;
 using NotesAPI.Endpoints;
 using NotesAPI.DTO.Mapper;
+using MediatR;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,7 +31,7 @@ builder.Services.AddHttpContextAccessor();
 // 3. Configure caching
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = 10240; // Cache size limit
+    options.SizeLimit = 10240;
 });
 
 // 4. Configure CORS
@@ -40,6 +41,7 @@ builder.Services.AddCors(options =>
         policy => policy.WithOrigins("http://localhost:3000", "http://192.168.2.39:3000")
                         .AllowAnyHeader()
                         .AllowAnyMethod()
+                        .AllowCredentials()
                         .SetPreflightMaxAge(TimeSpan.FromMinutes(10)));
 });
 
@@ -57,21 +59,36 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// 6. Dependency Injection via Assembly Scanning
+builder.Services.Scan(scan => scan
+    .FromAssemblyOf<IUserRepository>() // use any type from the target assembly
+    .AddClasses(classes => classes.AssignableToAny(
+        typeof(ISupportRepository),
+        typeof(IContactRepository),
+        typeof(IUserRepository),
+        typeof(IOtpRepository),
+        typeof(ILookupRepository),
+        typeof(IStudentRepository),
+        typeof(IOtpGenerator)))
+    .AsImplementedInterfaces()
+    .WithScopedLifetime());
+
+builder.Services.Scan(scan => scan
+    .FromAssemblyOf<CreateLookupDtoValidator>()
+    .AddClasses(classes => classes.AssignableTo(typeof(IValidator<>)))
+    .AsImplementedInterfaces()
+    .WithScopedLifetime());
+
 builder.Services.AddFluentValidationAutoValidation();
 
-// 6. Register repositories and helpers (DI)
-builder.Services.AddTransient<IOtpGenerator, OtpGenerator>();
-builder.Services.AddScoped<ISupportRepository, SupportRepository>();
-builder.Services.AddScoped<IContactRepository, ContactRepository>();
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IOtpRepository, OtpRepository>();
-builder.Services.AddScoped<ILookupRepository, LookupRepository>();
-builder.Services.AddValidatorsFromAssemblyContaining<CreateLookupDtoValidator>();
-
+// 7. Other Services
 builder.Services.AddAutoMapper(typeof(UserMappingProfile));
+builder.Services.AddSignalR();
+builder.Services.AddHttpClient<GroqBotService>();
+builder.Services.AddScoped<IBotService, GroqBotService>();
+builder.Services.AddMediatR(typeof(Program));
 
-
-// 7. Quartz scheduler setup
+// 8. Quartz Scheduler Setup
 builder.Services.AddQuartz(q =>
 {
     var jobKey = new JobKey("OtpCleanupJob");
@@ -85,7 +102,7 @@ builder.Services.AddQuartz(q =>
 });
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
-// 8. API Versioning
+// 9. API Versioning
 builder.Services.AddApiVersioning(options =>
 {
     options.AssumeDefaultVersionWhenUnspecified = true;
@@ -94,39 +111,30 @@ builder.Services.AddApiVersioning(options =>
     options.ApiVersionReader = new UrlSegmentApiVersionReader();
 });
 
-// 9. Versioned API Explorer (for Swagger)
+// 10. Swagger Versioned API Explorer
 builder.Services.AddVersionedApiExplorer(options =>
 {
     options.GroupNameFormat = "'v'VVV";
     options.SubstituteApiVersionInUrl = true;
 });
-
-// 10. Swagger configuration
 builder.Services.AddSwaggerGen();
 builder.Services.ConfigureOptions<ConfigureSwaggerOptions>();
 
-// 11. Serilog logging setup
+// 11. Serilog Logging
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .ReadFrom.Services(services)
-    .Enrich.FromLogContext()
-);
+    .Enrich.FromLogContext());
 
-// Configure host URLs
+// 12. Configure host URLs
 builder.WebHost.UseUrls("http://localhost:5020", "http://192.168.2.39:5020");
-
 
 var app = builder.Build();
 
-// Middleware pipeline starts here
+// --- Middleware pipeline ---
 
-// 1. Serilog request logging
 app.UseSerilogRequestLogging();
 
-// 2. Enable CORS
-app.UseCors("AllowFrontend");
-
-// 3. Swagger UI in development only
 if (app.Environment.IsDevelopment())
 {
     var provider = app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
@@ -141,17 +149,13 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// 4. HTTPS redirection
+app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
-
-// 5. Authentication & Authorization (add Authentication middleware if you want to validate JWT on requests)
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGroup("/api").MapLookupApi();
+app.MapHub<ChatHub>("/chatbot");
 
-// 6. Map controllers (endpoints)
 app.MapControllers();
-
-// Run the app
 app.Run();

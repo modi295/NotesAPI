@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace NotesAPI.Models;
 
@@ -65,6 +63,9 @@ public partial class NotesApplicationContext : DbContext
     public virtual DbSet<Support> Supports { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
+    
+    public virtual DbSet<Student> Students { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

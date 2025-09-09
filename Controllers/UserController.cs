@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using NotesAPI.Validator;
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 
 namespace NotesAPI.Controllers
 {
@@ -195,6 +196,8 @@ namespace NotesAPI.Controllers
         }
 
         [HttpGet("users/{email}")]
+        [Authorize]
+        
         public async Task<ActionResult<UserResponseDTO>> GetUserByEmail(string email)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
@@ -209,6 +212,8 @@ namespace NotesAPI.Controllers
         }
 
         [HttpPut("users/{email}")]
+        [Authorize]
+
         public async Task<IActionResult> UpdateUser(string email, [FromForm] UpdateUserDto dto, IFormFile? profilePicture)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
